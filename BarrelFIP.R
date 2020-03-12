@@ -14,6 +14,11 @@ table = bref %>% html_nodes(xpath = '//comment()') %>%
   html_table() %>%
   .[colSums(is.na(.)) < nrow(.)]  
 
+table <- data.frame(table[table$Name != "Name",])
+table <- as.data.frame(table)
+
+table[-c(2, 4, 5)] <- sapply(table[-c(2, 4, 5)], as.numeric)
+
 #convert partial innings to correct decimals
 table$IP = gsub("\\.1", ".33", table$IP)
 table$IP = gsub("\\.2", ".66", table$IP)
@@ -37,7 +42,7 @@ breftable = breftable %>%
   select(-c(Name))
 
 #collect statcast data
-url <- "https://baseballsavant.mlb.com/statcast_leaderboard?player_type=pitcher"
+url <- "https://baseballsavant.mlb.com/leaderboard/statcast?type=pitcher&year=2019&position=&team=&min=100"
 brl = read_html(url)
 brl <- brl %>%
   html_nodes("script")
@@ -56,27 +61,32 @@ for (j in 1:length(namecands)){
   names = c(names, sub('",.*', '', namecands[j]))
 }
 
+names <- names[(1:(length(names)/3))*3-2]
 lastname = sub(',.*', '', names)
 firstname = sub('.*, ', '', names)
+
 
 #collect barrel rate info
 brlpa = c()
 
 for (k in 1:length(obs[[1]])){
-  if (grepl("brl_pa", obs[[1]][k]) == TRUE){
-    brlpos = gregexpr("brl_pa", obs[[1]][k])[[1]][1]
-    brlpastring = substr(obs[[1]][k], brlpos + 9, brlpos + 19)
-    brlpa = c(brlpa, sub('",.*', '', brlpastring))
+  if (grepl("barrels_per_pa", obs[[1]][k]) == TRUE){
+    brlpos = gregexpr("barrels_per_pa", obs[[1]][k])[[1]][1]
+    brlpastring = substr(obs[[1]][k], brlpos + 17, brlpos + 21)
+    brlpastring <- gsub("\"", "", brlpastring, fixed = TRUE)
+    brlpastring <- gsub(",", "", brlpastring)
+    brlpa <- c(brlpa, brlpastring)
   }
   }
   
-#create data frame of names with barrel rates  
+  
 barrels = data.frame(
   lastname = lastname,
   firstname = firstname,
   brl_pa = as.numeric(brlpa)
 )  
   
+
 #merge data
 data = merge(breftable, barrels)
 data$bbhbppct = data$bbpct + data$hbppct 
@@ -86,8 +96,10 @@ model = lm(data = data, formula = era ~ kpct + bbhbppct + brl_pa)
 
 #predict using model (adjust batters faced in filter function if needed)
 data$BarrelFIP = round(predict(model), 2)
-View(data %>%
-       filter(bf > 100) %>% 
-       select(firstname, lastname, era, BarrelFIP) %>%
-       mutate(diff = era - BarrelFIP))
+brlDF <- data %>%
+  filter(bf > 150) %>% 
+  select(firstname, lastname, bf, era, BarrelFIP) %>%
+  mutate(diff = era - BarrelFIP)
 
+View(brlDF)
+                            
